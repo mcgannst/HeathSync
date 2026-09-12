@@ -1,0 +1,27 @@
+# Test environment on the shared Docker host (192.168.68.73), with its own database (healthsync_test).
+#
+#   https://healthsync-test.sunspinner.ca   Cloudflare -> cloudflared -> server (no router ports opened)
+#   http://192.168.68.73:3031               LAN
+#
+# Deploy with: bash scripts/deploy.sh test
+# The image is built on the Mac and shipped over SSH, never built on the host. The project name must differ
+# from prod's so compose never replaces the production containers.
+name: healthsync-test
+services:
+  server:
+    image: healthsync-server:test
+    container_name: healthsync-test
+    restart: unless-stopped
+    ports:
+      - "3031:8000"
+    env_file: .env.test
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: healthsync-test-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    # Only the tunnel token; database credentials stay out of this container.
+    env_file: .env.test.tunnel
+    depends_on:
+      - server

@@ -1,0 +1,24 @@
+# Production on the shared Docker host (192.168.68.73), database healthsync_prod.
+#
+#   https://healthsync.sunspinner.ca   Cloudflare -> cloudflared -> server (no router ports opened)
+#   http://192.168.68.73:3030          LAN
+#
+# Deploy with: bash scripts/deploy.sh prod
+name: healthsync-prod
+services:
+  server:
+    image: healthsync-server:prod
+    container_name: healthsync
+    restart: unless-stopped
+    ports:
+      - "3030:8000"
+    env_file: .env.prod
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: healthsync-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file: .env.prod.tunnel
+    depends_on:
+      - server

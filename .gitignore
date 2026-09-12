@@ -1,0 +1,27 @@
+.DS_Store
+xcuserdata/
+DerivedData/
+build/
+*.xcresult
+
+# Secrets: only the *.example templates are committed
+.env
+.env.*
+!.env.example
+!*.env.example
+deploy/.env*
+!deploy/*.example
+server/.env*
+!server/.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Database dumps
+*.dump
+*.sql.gz
+backups/

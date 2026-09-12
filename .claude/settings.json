@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker --context shared-docker-server logs *)",
+      "Bash(xcrun simctl list *)",
+      "Bash(docker --context shared-docker-server ps *)",
+      "Bash(docker context ls)"
+    ]
+  }
+}
