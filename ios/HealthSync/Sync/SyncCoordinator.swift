@@ -31,6 +31,8 @@ final class SyncCoordinator {
 
     @ObservationIgnored private var inFlight: Task<Void, Never>?
     @ObservationIgnored private var rerunRequested = false
+    /// Bumped whenever an upload changes serverStatus locally, so an older answer from the server can't undo it.
+    @ObservationIgnored private var statusRevision = 0
     @ObservationIgnored private let defaults = UserDefaults.standard
 
     private static let enabledGroupsKey = "enabledGroups"
@@ -101,8 +103,29 @@ final class SyncCoordinator {
 
     func refreshServerStatus() async {
         guard let session = SessionStore.shared.session else { return }
-        if let status = try? await session.api.status() {
+        let revision = statusRevision
+        // An upload counted while this request was out would be missing from the answer, so keep the local counts.
+        if let status = try? await session.api.status(), revision == statusRevision {
             serverStatus = status
+        }
+    }
+
+    /// Applies what the uploader reports: the status message, and pages the server accepted, so the uploaded
+    /// counts on screen move as the upload runs.
+    private func apply(_ progress: UploadProgress) {
+        switch progress {
+        case let .message(message):
+            if isSyncing {
+                status = .syncing(message)
+            }
+        case let .samples(type, inserted, deleted, first, last):
+            guard serverStatus != nil else { return }
+            statusRevision += 1
+            serverStatus?.recordSamples(type: type, inserted: inserted, deleted: deleted, first: first, last: last)
+        case let .workouts(inserted, deleted):
+            guard let current = serverStatus?.workoutCount else { return }
+            statusRevision += 1
+            serverStatus?.workoutCount = max(0, current + inserted - deleted)
         }
     }
 
@@ -120,16 +143,13 @@ final class SyncCoordinator {
     private func performSync() async {
         guard let session = SessionStore.shared.session else { return }
         status = .syncing("Checking for new Health data…")
+        // Start from the server's counts; apply(_:) then moves them as each page is accepted.
+        await refreshServerStatus()
         let uploader = HealthUploader(store: Health.store, api: session.api, anchorScope: session.anchorScope)
 
         do {
-            _ = try await uploader.run(groups: enabledGroups) { message in
-                Task { @MainActor in
-                    let coordinator = SyncCoordinator.shared
-                    if coordinator.isSyncing {
-                        coordinator.status = .syncing(message)
-                    }
-                }
+            _ = try await uploader.run(groups: enabledGroups) { progress in
+                await MainActor.run { SyncCoordinator.shared.apply(progress) }
             }
             lastSync = .now
             defaults.set(lastSync, forKey: Self.lastSyncKey)

@@ -97,18 +97,33 @@ struct UploadResult: Decodable, Sendable {
 
 struct TypeCoverage: Decodable, Identifiable, Sendable {
     let type: String
-    let count: Int
-    let first: Date
-    let last: Date
+    var count: Int
+    var first: Date
+    var last: Date
 
     var id: String { type }
 }
 
 struct SyncStatus: Decodable, Sendable {
     let lastSyncAt: Date?
-    let samples: [TypeCoverage]
-    let workoutCount: Int
+    var samples: [TypeCoverage]
+    var workoutCount: Int
     let dailySummaryCount: Int
+}
+
+extension SyncStatus {
+    /// Applies a page of readings the server accepted, so counts move during an upload without another request.
+    /// `inserted` and `deleted` are the server's row counts, which already exclude duplicates.
+    mutating func recordSamples(type: String, inserted: Int, deleted: Int, first: Date?, last: Date?) {
+        if let index = samples.firstIndex(where: { $0.type == type }) {
+            samples[index].count = max(0, samples[index].count + inserted - deleted)
+            if let first { samples[index].first = min(samples[index].first, first) }
+            if let last { samples[index].last = max(samples[index].last, last) }
+        } else if inserted > 0, let first, let last {
+            samples.append(TypeCoverage(type: type, count: inserted, first: first, last: last))
+            samples.sort { $0.type < $1.type }
+        }
+    }
 }
 
 struct NewAccount: Encodable {

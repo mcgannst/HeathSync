@@ -10,6 +10,14 @@ struct SyncReport: Sendable {
     var summariesUploaded = 0
 }
 
+/// What the uploader reports while it runs, so the app can show progress without asking the server again.
+enum UploadProgress: Sendable {
+    case message(String)
+    /// A page of readings the server accepted: rows it added and removed, and the time span of the page.
+    case samples(type: String, inserted: Int, deleted: Int, first: Date?, last: Date?)
+    case workouts(inserted: Int, deleted: Int)
+}
+
 /// Uploads Health data to the server.
 ///
 /// Each type is read with an anchored query in pages, so the first run backfills two years and later runs send
@@ -33,7 +41,8 @@ actor HealthUploader {
         anchors = AnchorStore(scope: anchorScope)
     }
 
-    func run(groups: Set<DataGroup>, progress: @escaping @Sendable (String) -> Void) async throws -> SyncReport {
+    /// `progress` is awaited, so every report is applied, in order, before the next page is read.
+    func run(groups: Set<DataGroup>, progress: @escaping @Sendable (UploadProgress) async -> Void) async throws -> SyncReport {
         var report = SyncReport()
         let today = calendar.startOfDay(for: .now)
         let backfillStart = calendar.date(byAdding: .year, value: -Self.backfillYears, to: today) ?? today
@@ -56,7 +65,8 @@ actor HealthUploader {
     // MARK: Samples
 
     private func upload(
-        _ metric: HealthMetric, since backfillStart: Date, report: inout SyncReport, progress: @Sendable (String) -> Void
+        _ metric: HealthMetric, since backfillStart: Date, report: inout SyncReport,
+        progress: @Sendable (UploadProgress) async -> Void
     ) async throws {
         let predicate = HKQuery.predicateForSamples(withStart: backfillStart, end: nil)
         var changedDays = Set<Date>()
@@ -79,8 +89,12 @@ actor HealthUploader {
                 report.samplesUploaded += result.inserted
                 report.samplesDeleted += result.deleted
                 uploaded += samples.count
+                await progress(.samples(
+                    type: metric.name, inserted: result.inserted, deleted: result.deleted,
+                    first: samples.map(\.start).min(), last: samples.map(\.end).max()
+                ))
                 if uploaded >= Self.samplePageSize {
-                    progress("Uploading \(metric.title.lowercased()): \(uploaded.formatted()) readings")
+                    await progress(.message("Uploading \(metric.title.lowercased()): \(uploaded.formatted()) readings"))
                 }
             }
             for sample in page.addedSamples {
@@ -212,7 +226,7 @@ actor HealthUploader {
     // MARK: Workouts
 
     private func uploadWorkouts(
-        since backfillStart: Date, report: inout SyncReport, progress: @Sendable (String) -> Void
+        since backfillStart: Date, report: inout SyncReport, progress: @Sendable (UploadProgress) async -> Void
     ) async throws {
         let key = "workouts"
         let predicate = HKQuery.predicateForSamples(withStart: backfillStart, end: nil)
@@ -228,10 +242,11 @@ actor HealthUploader {
             let deleted = page.deletedObjects.map(\.uuid)
             if !workouts.isEmpty || !deleted.isEmpty {
                 if workouts.count == Self.workoutPageSize {
-                    progress("Uploading workouts")
+                    await progress(.message("Uploading workouts"))
                 }
                 let result = try await api.uploadWorkouts(WorkoutsUpload(workouts: workouts, deleted: deleted))
                 report.workoutsUploaded += result.inserted
+                await progress(.workouts(inserted: result.inserted, deleted: result.deleted))
             }
             anchors.setAnchor(page.newAnchor, for: key)
             if page.addedSamples.count < Self.workoutPageSize && page.deletedObjects.count < Self.workoutPageSize {

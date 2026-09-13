@@ -61,4 +61,26 @@ struct APIModelsTests {
         #expect(APIClient.errorMessage(Data(#"{"detail": [{"msg": "too short"}, {"msg": "bad zone"}]}"#.utf8)) == "too short\nbad zone")
         #expect(APIClient.errorMessage(Data("<html>".utf8)) == nil)
     }
+
+    @Test func acceptedUploadsMoveTheCountsLocally() {
+        let june = morning.addingTimeInterval(-90 * 24 * 3600)
+        let later = morning.addingTimeInterval(60)
+        var status = SyncStatus(
+            lastSyncAt: nil,
+            samples: [TypeCoverage(type: "stepCount", count: 10, first: morning, last: morning)],
+            workoutCount: 0,
+            dailySummaryCount: 0
+        )
+
+        status.recordSamples(type: "stepCount", inserted: 5, deleted: 2, first: june, last: later)
+        status.recordSamples(type: "heartRate", inserted: 3, deleted: 0, first: morning, last: morning)
+        // Only deletions for a type the server has no rows for: nothing to show.
+        status.recordSamples(type: "bodyMass", inserted: 0, deleted: 4, first: nil, last: nil)
+
+        #expect(status.samples.map(\.type) == ["heartRate", "stepCount"])
+        #expect(status.samples[0].count == 3)
+        #expect(status.samples[1].count == 13)
+        #expect(status.samples[1].first == june)
+        #expect(status.samples[1].last == later)
+    }
 }
