@@ -19,7 +19,7 @@ claude.ai ──OAuth──▶  └─ /mcp  read-only tools
 | `ios/` | SwiftUI app for iPhone and iPad (iOS 18+) |
 | `server/` | FastAPI app: upload API, OAuth sign-in, MCP server |
 | `db/` | SQL migrations and grants |
-| `scripts/` | Database setup, Cloudflare Tunnel setup, deploy, backups |
+| `scripts/` | Database setup, Cloudflare Tunnel setup, deploy |
 | `deploy/` | Compose files, plus gitignored env files with credentials |
 
 ## What gets uploaded
@@ -77,8 +77,9 @@ bash scripts/db.sh test               # roles, database, migrations, grants; wri
 bash scripts/cf-tunnel-setup.sh test  # tunnel + DNS; writes deploy/.env.test.tunnel
 bash scripts/deploy.sh test           # build, ship, start, health check
 docker --context shared-docker-server exec -it healthsync-test python -m app.cli create-user stephen --name Stephen --admin
-bash scripts/install-backup.sh        # nightly pg_dump on the Docker host, 30 days kept
 ```
+
+Backups are handled by Proxmox, outside this repo.
 
 All scripts are safe to re-run. Add a schema change as a new file in `db/migrations/` and run `scripts/db.sh` again.
 
