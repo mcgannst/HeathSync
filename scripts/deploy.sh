@@ -59,5 +59,8 @@ echo "  Public   https://$PUBLIC_HOST/healthz -> $public"
 metadata=$(curl -s -o /dev/null -w "%{http_code}" "https://$PUBLIC_HOST/.well-known/oauth-protected-resource/mcp" || true)
 echo "  OAuth    https://$PUBLIC_HOST/.well-known/oauth-protected-resource/mcp -> $metadata"
 
-[ "$lan" = "200" ] && [ "$public" = "200" ] && [ "$metadata" = "200" ]
+if [ "$lan" != "200" ] || [ "$public" != "200" ] || [ "$metadata" != "200" ]; then
+  echo "==> Health check failed" >&2
+  exit 1
+fi
 echo "==> Done"

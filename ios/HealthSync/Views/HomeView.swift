@@ -171,5 +171,14 @@ struct UploadedDataView: View {
         }
         .navigationTitle("Uploaded Data")
         .refreshable { await sync.refreshServerStatus() }
+        // Refreshes on open, then every few seconds while an upload runs so the counts don't look stuck.
+        // Restarts when syncing starts or stops, and is cancelled when the screen closes.
+        .task(id: sync.isSyncing) {
+            repeat {
+                await sync.refreshServerStatus()
+                guard sync.isSyncing else { return }
+                try? await Task.sleep(for: .seconds(5))
+            } while !Task.isCancelled
+        }
     }
 }
